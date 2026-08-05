@@ -1,12 +1,12 @@
-"""Cenário real: API de comprovantes Pix sob carga, resolvida com cache-aside.
+"""Real-world scenario: a Pix receipt API under load, solved with cache-aside.
 
-Narrativa:
-  1. App do banco consulta comprovante de Pix na API, que busca no Postgres (~45 ms).
-  2. Horário de pico (dia 5, salários caindo): consultas se acumulam, o banco satura.
-  3. Entra o Redis com o padrão cache-aside: miss -> busca no banco -> grava no cache.
-  4. Consultas seguintes respondem direto do cache (~3 ms) e o banco respira.
+Storyline:
+  1. The bank's app queries a Pix receipt from the API, which hits Postgres (~45 ms).
+  2. Peak time (the 5th, payday): queries pile up and the database saturates.
+  3. Redis comes in with the cache-aside pattern: miss -> fetch from DB -> write to cache.
+  4. Subsequent queries are served straight from the cache (~3 ms) and the DB breathes.
 
-Renderizar:
+Render:
     uv run manim -pql pix_cache_aside.py PixCacheAside
     uv run manim -pqh pix_cache_aside.py PixCacheAside
 """
@@ -44,7 +44,7 @@ class PixCacheAside(Scene):
         self.caption = new
 
     def set_latency(self, value: str, color):
-        new = Text(f"latência: {value}", font_size=24, color=color).to_corner(UR)
+        new = Text(f"latency: {value}", font_size=24, color=color).to_corner(UR)
         if self.latency is None:
             self.latency = new
             self.play(FadeIn(new), run_time=0.4)
@@ -61,7 +61,7 @@ class PixCacheAside(Scene):
             self.play(Transform(self.cpu, new), run_time=0.4)
 
     def travel(self, points, color=GREEN, seg_time: float = 0.55, keep=False):
-        """Anima um Dot passando pelos pontos dados; retorna o Dot."""
+        """Animates a Dot traveling through the given points; returns the Dot."""
         dot = Dot(color=color, radius=0.1).move_to(points[0])
         self.add(dot)
         for p in points[1:]:
@@ -70,17 +70,17 @@ class PixCacheAside(Scene):
             self.play(FadeOut(dot), run_time=0.15)
         return dot
 
-    # ------------------------------------------------------------------ fases
+    # ------------------------------------------------------------------ phases
 
     def build_architecture(self):
-        title = Text("Pix: consulta de comprovante", font_size=34).to_edge(UP)
+        title = Text("Pix: receipt lookup", font_size=34).to_edge(UP)
 
         self.apps = VGroup(*[
             service_box("App", GREEN_B, width=1.5, height=0.7, font_size=20)
             for _ in range(3)
         ]).arrange(DOWN, buff=0.35).shift(LEFT * 5.4)
 
-        self.api = service_box("API Pix", WHITE).shift(LEFT * 1.3)
+        self.api = service_box("Pix API", WHITE).shift(LEFT * 1.3)
         self.db = service_box("Postgres", BLUE).shift(RIGHT * 5)
 
         self.link_in = Line(self.apps.get_right() + RIGHT * 0.1,
@@ -98,7 +98,7 @@ class PixCacheAside(Scene):
             Create(self.link_in),
             Create(self.link_db),
         )
-        self.set_caption("Fez um Pix? O app busca o comprovante na API, que consulta o banco")
+        self.set_caption("Made a Pix? The app fetches the receipt from the API, which queries the DB")
 
     def normal_traffic(self):
         self.set_latency("45 ms", GREEN)
@@ -111,7 +111,7 @@ class PixCacheAside(Scene):
         self.wait(0.4)
 
     def bottleneck(self):
-        self.set_caption("Dia 5, salário caiu: todo mundo fazendo e conferindo Pix", YELLOW)
+        self.set_caption("The 5th, payday: everyone sending and checking Pix", YELLOW)
 
         dots = VGroup(*[
             Dot(color=GREEN, radius=0.09).move_to(self.apps[i % 3].get_center())
@@ -123,7 +123,7 @@ class PixCacheAside(Scene):
             lag_ratio=0.12, run_time=1.2,
         ))
 
-        # Requisições enfileiram esperando o banco
+        # Requests queue up waiting on the database
         queue = [self.db.get_left() + LEFT * (0.45 + 0.42 * i) for i in range(6)]
         self.play(LaggedStart(
             *[d.animate.move_to(p) for d, p in zip(dots, queue)],
@@ -134,8 +134,8 @@ class PixCacheAside(Scene):
         self.set_cpu("78%", YELLOW)
         self.play(dots.animate.set_color(ORANGE), run_time=0.5)
 
-        self.set_caption("Toda consulta vai ao banco: pool de conexões esgotado", ORANGE)
-        self.set_latency("2,4 s", RED)
+        self.set_caption("Every query hits the DB: connection pool exhausted", ORANGE)
+        self.set_latency("2.4 s", RED)
         self.set_cpu("97%", RED)
         self.play(
             self.db[0].animate.set_color(RED),
@@ -144,10 +144,10 @@ class PixCacheAside(Scene):
         )
         self.play(Indicate(self.db, color=RED))
 
-        self.set_caption("Usuários olhando a telinha de loading…", RED)
+        self.set_caption("Users staring at the loading screen…", RED)
         self.wait(0.8)
 
-        # Fila é processada lentamente e some
+        # The queue drains slowly and disappears
         self.play(LaggedStart(
             *[FadeOut(d, target_position=self.db.get_center()) for d in dots],
             lag_ratio=0.2, run_time=2,
@@ -155,7 +155,7 @@ class PixCacheAside(Scene):
         self.wait(0.3)
 
     def cache_aside(self):
-        self.set_caption("Solução: cache-aside com Redis", WHITE)
+        self.set_caption("Solution: cache-aside with Redis", WHITE)
 
         self.redis = service_box("Redis", YELLOW).move_to(
             (self.api.get_center() + self.db.get_center()) / 2 + UP * 1.9
@@ -173,34 +173,34 @@ class PixCacheAside(Scene):
         db = self.db.get_center()
         redis = self.redis.get_center()
 
-        # 1) consulta o cache -> MISS
-        self.set_caption("1) API consulta o Redis primeiro → MISS", YELLOW)
+        # 1) check the cache -> MISS
+        self.set_caption("1) API checks Redis first → MISS", YELLOW)
         dot = self.travel([app, api, redis], keep=True)
         miss = Text("MISS", font_size=22, color=RED).next_to(self.redis, UP, buff=0.15)
         self.play(Indicate(self.redis, color=RED), FadeIn(miss))
 
-        # 2) busca no banco
-        self.set_caption("2) No miss, a API busca no banco (1 única vez)", WHITE)
+        # 2) fetch from the database
+        self.set_caption("2) On a miss, the API queries the DB (only once)", WHITE)
         self.play(dot.animate.move_to(api), run_time=0.4)
         self.play(dot.animate.move_to(db), run_time=0.55)
         self.play(Indicate(self.db, color=BLUE), run_time=0.6)
         self.play(dot.animate.move_to(api), run_time=0.55)
 
-        # 3) grava no cache
-        self.set_caption('3) Grava no Redis: SET comprovante:9f3a  (TTL 10 min)', YELLOW)
+        # 3) write to the cache
+        self.set_caption('3) Write to Redis: SET receipt:9f3a  (TTL 10 min)', YELLOW)
         self.play(dot.animate.move_to(redis), run_time=0.55)
-        entry = Text("comprovante:9f3a", font_size=18, color=YELLOW)
+        entry = Text("receipt:9f3a", font_size=18, color=YELLOW)
         entry.next_to(self.redis, UP, buff=0.15)
         self.play(FadeOut(miss), FadeIn(entry))
 
-        # 4) responde
-        self.set_caption("4) Responde ao app", GREEN)
+        # 4) respond
+        self.set_caption("4) Respond to the app", GREEN)
         self.play(dot.animate.move_to(api), run_time=0.4)
         self.play(dot.animate.move_to(app), run_time=0.5)
         self.play(FadeOut(dot), run_time=0.15)
 
-        # Consultas seguintes: HIT direto do cache
-        self.set_caption("Consultas seguintes do mesmo comprovante: HIT no cache", GREEN)
+        # Subsequent queries: HIT straight from the cache
+        self.set_caption("Subsequent queries for the same receipt: cache HIT", GREEN)
         self.set_latency("3 ms", GREEN)
         hit = Text("HIT", font_size=22, color=GREEN).next_to(entry, RIGHT, buff=0.25)
         for i in range(3):
@@ -217,12 +217,12 @@ class PixCacheAside(Scene):
 
     def finale(self):
         self.set_caption(
-            "Cache-aside: o banco só vê a 1ª consulta; o resto sai do Redis",
+            "Cache-aside: the DB only sees the 1st query; the rest comes from Redis",
             GREEN, run_time=0.8,
         )
         stats = VGroup(
-            Text("antes: 2,4 s  |  CPU 97%", font_size=22, color=RED),
-            Text("depois: 3 ms  |  CPU 25%", font_size=22, color=GREEN),
+            Text("before: 2.4 s  |  CPU 97%", font_size=22, color=RED),
+            Text("after: 3 ms  |  CPU 25%", font_size=22, color=GREEN),
         ).arrange(DOWN, aligned_edge=LEFT, buff=0.2).to_corner(UL).shift(DOWN * 0.9)
         self.play(FadeIn(stats))
         self.wait(2.5)
