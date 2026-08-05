@@ -107,7 +107,29 @@ class PixCacheAside(Scene):
         app = self.apps[1].get_center()
         api = self.api.get_center()
         db = self.db.get_center()
-        self.travel([app, api, db, api, app])
+
+        # Outbound: the request label follows the dot
+        dot = Dot(color=GREEN, radius=0.1).move_to(app)
+        req = Text("GET /receipts/9f3a", font_size=18, color=GREEN)
+        req.add_updater(lambda m: m.next_to(dot, UP, buff=0.15))
+        self.add(dot, req)
+        self.play(dot.animate.move_to(api), run_time=0.55)
+        self.play(dot.animate.move_to(db), run_time=0.55)
+        req.clear_updaters()
+        self.play(FadeOut(req), run_time=0.2)
+
+        # Return: the response payload follows the dot back
+        resp = VGroup(
+            Text('{ "id": "9f3a",', font_size=16, color=GREEN),
+            Text('  "amount": "R$ 250.00",', font_size=16, color=GREEN),
+            Text('  "status": "completed" }', font_size=16, color=GREEN),
+        ).arrange(DOWN, aligned_edge=LEFT, buff=0.08)
+        resp.add_updater(lambda m: m.next_to(dot, UP, buff=0.15))
+        self.play(FadeIn(resp), run_time=0.2)
+        self.play(dot.animate.move_to(api), run_time=0.55)
+        self.play(dot.animate.move_to(app), run_time=0.55)
+        resp.clear_updaters()
+        self.play(FadeOut(dot), FadeOut(resp), run_time=0.2)
         self.wait(0.4)
 
     def bottleneck(self):
@@ -168,6 +190,17 @@ class PixCacheAside(Scene):
         self.play(FadeIn(self.redis), Create(self.link_cache))
         self.wait(0.3)
 
+        # Why the cache is faster: RAM vs disk
+        self.set_caption("Why faster? Redis keeps everything in RAM", YELLOW)
+        why = VGroup(
+            Text("Redis: key-value in RAM, O(1) lookup", font_size=19, color=YELLOW),
+            Text("Postgres: SQL parse + planner + disk pages", font_size=19, color=BLUE),
+            Text("RAM ≈ 100 ns   |   SSD ≈ 100 µs", font_size=19, color=GRAY_A),
+        ).arrange(DOWN, aligned_edge=LEFT, buff=0.14).to_corner(UL).shift(DOWN * 0.7)
+        self.play(FadeIn(why))
+        self.wait(2)
+        self.play(FadeOut(why))
+
         app = self.apps[1].get_center()
         api = self.api.get_center()
         db = self.db.get_center()
@@ -225,4 +258,11 @@ class PixCacheAside(Scene):
             Text("after: 3 ms  |  CPU 25%", font_size=22, color=GREEN),
         ).arrange(DOWN, aligned_edge=LEFT, buff=0.2).to_corner(UL).shift(DOWN * 0.9)
         self.play(FadeIn(stats))
+        self.wait(1.5)
+
+        tradeoff = Text(
+            "trade-off: data can be up to 10 min stale (TTL)",
+            font_size=20, color=GRAY_A,
+        ).next_to(stats, DOWN, aligned_edge=LEFT, buff=0.25)
+        self.play(FadeIn(tradeoff))
         self.wait(2.5)
